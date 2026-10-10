@@ -58,6 +58,14 @@
     .urgency.medium { background: #3d2f10; color: #d29922; }
     .urgency.low { background: #103510; color: #3fb950; }
     .error { background: #3d1f1f; color: #f85149; padding: 1rem; border-radius: 6px; display: none; margin-top: 1rem; }
+    .voice-row { display: flex; gap: 0.6rem; margin-top: 1rem; }
+    #micBtn { width: auto; padding: 0.7rem 1.1rem; flex-shrink: 0; }
+    #micBtn.listening { background: var(--warning); animation: pulse 1.2s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
+    #voiceText { flex: 1; background: #12161f; color: var(--text); border: 1px solid #2a3040;
+      border-radius: 6px; padding: 0.7rem; font-size: 0.95rem; resize: vertical; min-height: 70px;
+      font-family: inherit; }
+    .voice-hint { color: var(--muted); font-size: 0.78rem; margin-top: 0.4rem; }
   </style>
 </head>
 <body>
@@ -74,6 +82,11 @@
       </div>
       <input type="file" id="file" accept="image/jpeg,image/png" hidden />
       <img id="preview" alt="preview" />
+      <div class="voice-row">
+        <button id="micBtn" title="Dictate a question or context">🎤 Speak</button>
+        <textarea id="voiceText" placeholder="Spoken question about this artifact appears here…"></textarea>
+      </div>
+      <div class="voice-hint" id="voiceHint">Voice input uses your browser's speech recognition (Chrome/Edge). Click 🎤 and start speaking.</div>
       <button id="process" disabled>Process &amp; Extract Community Actions</button>
       <div class="spinner" id="spinner">Analyzing visual context &amp; layout with Gemma 4…</div>
     </div>
@@ -101,8 +114,65 @@ const spinner = document.getElementById('spinner');
 const result = document.getElementById('result');
 const errorBox = document.getElementById('error');
 
+const micBtn = document.getElementById('micBtn');
+const voiceText = document.getElementById('voiceText');
+const voiceHint = document.getElementById('voiceHint');
+
 const ENDPOINT = '/v1/chat/completions';
 let fileB64 = null;
+
+// ---- Voice recognition (Web Speech API) ----
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null;
+let listening = false;
+
+if (SpeechRec) {
+  recognition = new SpeechRec();
+  recognition.lang = 'en-US';
+  recognition.continuous = true;
+  recognition.interimResults = true;
+
+  recognition.onstart = () => {
+    listening = true;
+    micBtn.textContent = '⏹ Stop';
+    micBtn.classList.add('listening');
+    voiceHint.textContent = 'Listening… speak now. Click ⏹ Stop when done.';
+  };
+  recognition.onresult = (e) => {
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const txt = e.results[i][0].transcript;
+      if (e.results[i].isFinal) voiceText.value += (voiceText.value ? ' ' : '') + txt;
+      else interim += txt;
+    }
+    if (interim) micBtn.title = interim;
+  };
+  recognition.onend = () => stopListening();
+  recognition.onerror = (e) => {
+    stopListening();
+    voiceHint.textContent = `Voice input error: ${e.error}`;
+  };
+} else {
+  micBtn.disabled = true;
+  voiceHint.textContent = 'Speech recognition is not supported in this browser (try Chrome or Edge).';
+}
+
+function stopListening() {
+  listening = false;
+  micBtn.textContent = '🎤 Speak';
+  micBtn.classList.remove('listening');
+  if (SpeechRec) voiceHint.textContent = 'Click 🎤 and start speaking.';
+}
+
+micBtn.onclick = () => {
+  if (listening) {
+    recognition.stop();
+    stopListening();
+  } else {
+    voiceText.value = '';
+    try { recognition.start(); } catch (e) { /* already started */ }
+  }
+};
 
 dropzone.onclick = () => fileInput.click();
 dropzone.ondragover = e => { e.preventDefault(); dropzone.classList.add('dragover'); };
@@ -133,7 +203,9 @@ processBtn.onclick = async () => {
       { role: 'system', content: 'You are a multimodal community intelligence assistant. Process visual inputs and trigger display_civic_data with simplified citizen actions.' },
       { role: 'user', content: [
         { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${fileB64}` } },
-        { type: 'text', text: 'Extract actionable instructions from this image.' }
+        { type: 'text', text: voiceText.value.trim()
+          ? `Extract actionable instructions from this image. The citizen asks: "${voiceText.value.trim()}"`
+          : 'Extract actionable instructions from this image.' }
       ]}
     ],
     tools: [{

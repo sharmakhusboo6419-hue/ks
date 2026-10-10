@@ -1,0 +1,85 @@
+<html>
+
+<body style="margin:0; background:transparent;">
+  <div style="display:flex; gap:0.5rem; align-items:flex-start;">
+    <button id="micBtn" style="
+      border:none; border-radius:8px; padding:0.55rem 1rem; cursor:pointer;
+      background:linear-gradient(110deg,#2cae9e,#327ac6); color:#fff; font-weight:700;
+      font-size:0.9rem; flex-shrink:0;">🎤 Speak</button>
+    <textarea id="voiceText" placeholder="Spoken question appears here… you can also type." style="
+      flex:1; min-height:60px; border-radius:8px; border:1px solid rgba(154,198,199,.35);
+      background:rgba(11,23,29,.5); color:#f3f8f7; padding:0.55rem; font-size:0.9rem;
+      font-family:inherit; resize:vertical;"></textarea>
+  </div>
+  <div id="hint" style="color:#87a0a2; font-size:0.75rem; margin-top:0.35rem;">Click 🎤 and start speaking
+    (Chrome/Edge).</div>
+
+  <script>
+    const micBtn = document.getElementById('micBtn');
+    const voiceText = document.getElementById('voiceText');
+    const hint = document.getElementById('hint');
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = null;
+    let listening = false;
+
+    function push() {
+      // Send the transcript to Streamlit on every change.
+      Streamlit.setComponentValue(voiceText.value.trim() || null);
+    }
+
+    if (SpeechRec) {
+      recognition = new SpeechRec();
+      recognition.lang = 'en-US';
+      recognition.continuous = true;
+      recognition.interimResults = true;
+
+      recognition.onstart = () => {
+        listening = true;
+        micBtn.textContent = '⏹ Stop';
+        micBtn.style.background = '#d29922';
+        hint.textContent = 'Listening… speak now. Click ⏹ Stop when done.';
+      };
+      recognition.onresult = (e) => {
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          if (e.results[i].isFinal) {
+            voiceText.value += (voiceText.value ? ' ' : '') + e.results[i][0].transcript;
+            push();
+          }
+        }
+      };
+      recognition.onend = stop;
+      recognition.onerror = (e) => {
+        stop();
+        hint.textContent = 'Voice input error: ' + e.error;
+      };
+    } else {
+      micBtn.disabled = true;
+      micBtn.style.opacity = 0.5;
+      hint.textContent = 'Speech recognition not supported in this browser (try Chrome or Edge).';
+    }
+
+    function stop() {
+      listening = false;
+      micBtn.textContent = '🎤 Speak';
+      micBtn.style.background = 'linear-gradient(110deg,#2cae9e,#327ac6)';
+      if (SpeechRec) hint.textContent = 'Click 🎤 and start speaking.';
+      push();
+    }
+
+    micBtn.onclick = () => {
+      if (listening) { recognition.stop(); stop(); }
+      else {
+        voiceText.value = '';
+        push();
+        try { recognition.start(); } catch (e) { }
+      }
+    };
+
+    voiceText.oninput = push;
+
+    Streamlit.setComponentReady();
+    Streamlit.setFrameHeight(110);
+  </script>
+</body>
+
+</html>

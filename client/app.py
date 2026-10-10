@@ -1,4 +1,6 @@
 import streamlit as st
+
+from voice_component import voice_input
 import requests
 import json
 import base64
@@ -15,6 +17,11 @@ uploaded_file = st.file_uploader("Upload a public notice, municipal form, or pho
 if uploaded_file is not None:
     bytes_data = uploaded_file.getvalue()
     image_b64 = base64.b64encode(bytes_data).decode('utf-8')
+
+    st.markdown('**Optional voice question**')
+    spoken = voice_input()
+    if spoken:
+        st.caption(f'You asked: "{spoken}"')
     
     col1, col2 = st.columns([1, 1])
     
@@ -57,7 +64,7 @@ if uploaded_file is not None:
                             "role": "user",
                             "content": [
                                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
-                                {"type": "text", "text": "Extract actionable instructions from this image."}
+                                {"type": "text", "text": f'Extract actionable instructions from this image. The citizen asks: "{spoken}"' if spoken else "Extract actionable instructions from this image."}
                             ]
                         }
                     ],
