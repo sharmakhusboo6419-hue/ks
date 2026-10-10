@@ -8,7 +8,7 @@ st.set_page_config(page_title="CivicLens — Community Intelligence", layout="wi
 st.title("CivicLens: Multimodal Community Intelligence Engine")
 st.caption("Powered by Google Gemma 4 & AWS Cloud Resources")
 
-GEMMA_4_ENDPOINT = "http://YOUR_EC2_OR_SAGEMAKER_IP:8000/v1/chat/completions"
+GEMMA_4_ENDPOINT = "http://localhost:8000/v1/chat/completions"
 
 uploaded_file = st.file_uploader("Upload a public notice, municipal form, or photo of a civic issue...", type=["jpg", "jpeg", "png"])
 

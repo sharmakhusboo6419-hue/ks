@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CivicLens — Community Intelligence</title>
+  <style>
+    :root {
+      --bg: #0e1117;
+      --card: #1a1f2e;
+      --accent: #4a9eff;
+      --text: #fafafa;
+      --muted: #9aa4b2;
+      --success: #3fb950;
+      --warning: #d29922;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 2rem;
+    }
+    header { text-align: center; margin-bottom: 2rem; }
+    header h1 { font-size: 1.8rem; margin-bottom: 0.3rem; }
+    header p { color: var(--muted); font-size: 0.95rem; }
+    .grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;
+      max-width: 1100px; margin: 0 auto;
+    }
+    @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--card); border-radius: 10px; padding: 1.5rem;
+      border: 1px solid #2a3040;
+    }
+    .card h2 { font-size: 1.1rem; margin-bottom: 1rem; color: var(--accent); }
+    .dropzone {
+      border: 2px dashed #3a4155; border-radius: 8px; padding: 2rem;
+      text-align: center; cursor: pointer; color: var(--muted);
+      transition: border-color 0.2s;
+    }
+    .dropzone:hover, .dropzone.dragover { border-color: var(--accent); }
+    #preview { max-width: 100%; border-radius: 8px; margin-top: 1rem; display: none; }
+    button {
+      background: var(--accent); color: #fff; border: none; border-radius: 6px;
+      padding: 0.7rem 1.4rem; font-size: 1rem; cursor: pointer; margin-top: 1rem; width: 100%;
+    }
+    button:hover { filter: brightness(1.1); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .spinner { color: var(--muted); margin-top: 1rem; display: none; text-align: center; }
+    .result { display: none; }
+    .badge { display: inline-block; background: #2a3040; padding: 0.3rem 0.8rem;
+      border-radius: 12px; font-size: 0.85rem; margin-bottom: 0.8rem; }
+    .result h3 { margin-bottom: 0.5rem; }
+    .result .summary { color: var(--muted); margin-bottom: 1rem; line-height: 1.5; }
+    .result ol { margin: 0.5rem 0 1rem 1.2rem; line-height: 1.7; }
+    .urgency { padding: 0.6rem 1rem; border-radius: 6px; font-weight: 600; }
+    .urgency.high { background: #3d1f1f; color: #f85149; }
+    .urgency.medium { background: #3d2f10; color: #d29922; }
+    .urgency.low { background: #103510; color: #3fb950; }
+    .error { background: #3d1f1f; color: #f85149; padding: 1rem; border-radius: 6px; display: none; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>CivicLens: Multimodal Community Intelligence Engine</h1>
+    <p>Powered by Google Gemma 4 &amp; AWS Cloud Resources</p>
+  </header>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Uploaded Artifact</h2>
+      <div class="dropzone" id="dropzone">
+        📤 Upload a public notice, municipal form, or photo of a civic issue
+      </div>
+      <input type="file" id="file" accept="image/jpeg,image/png" hidden />
+      <img id="preview" alt="preview" />
+      <button id="process" disabled>Process &amp; Extract Community Actions</button>
+      <div class="spinner" id="spinner">Analyzing visual context &amp; layout with Gemma 4…</div>
+    </div>
+
+    <div class="card">
+      <h2>Gemma 4 Actionable Analysis</h2>
+      <div class="result" id="result">
+        <span class="badge" id="category"></span>
+        <h3 id="title"></h3>
+        <p class="summary" id="summary"></p>
+        <h4>Actionable Steps for Citizens:</h4>
+        <ol id="steps"></ol>
+        <div class="urgency" id="urgency"></div>
+      </div>
+      <div class="error" id="error"></div>
+    </div>
+  </div>
+
+<script>
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('file');
+const preview = document.getElementById('preview');
+const processBtn = document.getElementById('process');
+const spinner = document.getElementById('spinner');
+const result = document.getElementById('result');
+const errorBox = document.getElementById('error');
+
+const ENDPOINT = '/v1/chat/completions';
+let fileB64 = null;
+
+dropzone.onclick = () => fileInput.click();
+dropzone.ondragover = e => { e.preventDefault(); dropzone.classList.add('dragover'); };
+dropzone.ondragleave = () => dropzone.classList.remove('dragover');
+dropzone.ondrop = e => { e.preventDefault(); dropzone.classList.remove('dragover'); if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); };
+fileInput.onchange = () => fileInput.files[0] && loadFile(fileInput.files[0]);
+
+function loadFile(f) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    preview.src = reader.result;
+    preview.style.display = 'block';
+    fileB64 = reader.result.split(',')[1];
+    processBtn.disabled = false;
+  };
+  reader.readAsDataURL(f);
+}
+
+processBtn.onclick = async () => {
+  spinner.style.display = 'block';
+  result.style.display = 'none';
+  errorBox.style.display = 'none';
+  processBtn.disabled = true;
+
+  const payload = {
+    model: 'google/gemma-4-12b-it',
+    messages: [
+      { role: 'system', content: 'You are a multimodal community intelligence assistant. Process visual inputs and trigger display_civic_data with simplified citizen actions.' },
+      { role: 'user', content: [
+        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${fileB64}` } },
+        { type: 'text', text: 'Extract actionable instructions from this image.' }
+      ]}
+    ],
+    tools: [{
+      type: 'function',
+      function: {
+        name: 'display_civic_data',
+        description: 'Parse civic information',
+        parameters: {
+          type: 'object',
+          properties: {
+            category: { type: 'string' },
+            title: { type: 'string' },
+            summary: { type: 'string' },
+            action_steps: { type: 'array', items: { type: 'string' } },
+            urgency: { type: 'string' }
+          },
+          required: ['category', 'title', 'summary', 'action_steps', 'urgency']
+        }
+      }
+    }],
+    tool_choice: 'auto'
+  };
+
+  try {
+    const res = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    const toolCalls = data.choices?.[0]?.message?.tool_calls || [];
+    if (toolCalls.length) {
+      const parsed = JSON.parse(toolCalls[0].function.arguments);
+      document.getElementById('category').textContent = parsed.category || 'Notice';
+      document.getElementById('title').textContent = parsed.title || '';
+      document.getElementById('summary').textContent = parsed.summary || '';
+      document.getElementById('steps').innerHTML =
+        (parsed.action_steps || []).map(s => `<li>${s}</li>`).join('');
+      const urg = document.getElementById('urgency');
+      urg.textContent = `Urgency Level: ${parsed.urgency}`;
+      urg.className = 'urgency ' + (parsed.urgency || 'low');
+      result.style.display = 'block';
+    } else {
+      result.style.display = 'block';
+      document.getElementById('summary').textContent = data.choices?.[0]?.message?.content || 'No analysis returned.';
+    }
+  } catch (e) {
+    errorBox.textContent = `Error connecting to Gemma 4 Endpoint: ${e.message}`;
+    errorBox.style.display = 'block';
+  } finally {
+    spinner.style.display = 'none';
+    processBtn.disabled = false;
+  }
+};
+</script>
+</body>
+</html>
