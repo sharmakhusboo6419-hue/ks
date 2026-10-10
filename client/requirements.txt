@@ -1,0 +1,5 @@
+streamlit>=1.36
+requests>=2.31
+gtts>=2.4
+fpdf2>=2.7
+pyperclip>=1.8
